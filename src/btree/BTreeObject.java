@@ -1,7 +1,7 @@
 package btree;
 import java.nio.LongBuffer;
 
-public class BTreeObject {
+public class BTreeObject implements Comparable<BTreeObject> {
 
 	private long key;
 	private long Counter;
@@ -28,7 +28,6 @@ public class BTreeObject {
 		return String.format("%s %s", Long.toString(key), Long.toString(Counter));
 	}
 
-	@SuppressWarnings("unchecked")
 	public boolean equals(Object o) {
 		if (o instanceof BTreeObject) 
 		   return key == ((BTreeObject)o).getKey();
@@ -43,6 +42,12 @@ public class BTreeObject {
 	public void fromBuffer(LongBuffer l) {
 		key = l.get();
 		Counter = l.get();
+	}
+
+
+	@Override
+	public int compareTo(BTreeObject o) {
+		return Long.compare(key, o.getKey());
 	}
 
 }
