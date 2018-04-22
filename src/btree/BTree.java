@@ -43,6 +43,9 @@ public class BTree {
 		}
 		
 		void save() throws IOException {
+			// Make sure the file is long enough
+			long needfilesize = metaDatasize + (id + 1) * nodesize;
+			if (storage.length() < needfilesize) storage.setLength(needfilesize);
 			storage.seek(metaDatasize + id * nodesize);
 			byte[] buff = new byte[nodesize];
 			LongBuffer l = ByteBuffer.wrap(buff).asLongBuffer();
@@ -58,7 +61,7 @@ public class BTree {
 			storage.write(buff);
 		}
 		
-		void load() throws IOException {
+		void load() throws IOException, BTreeWrongBlockID {
 			storage.seek(metaDatasize + id * nodesize);
 			byte[] buff = new byte[nodesize];
 			storage.read(buff);
@@ -82,17 +85,18 @@ public class BTree {
 	}
 	
 	
-	public BTree(String fname, boolean init) {
+	public BTree(String fname, boolean readonly, boolean init) {
 		if (init) {
-			int degree = getOptimalDegree();
-			init_btree(fname, degree);
+			setupOptimalTree();
+			init_btree(fname);
 		} else {
-			
+			open_btree(fname, readonly);
 		}
 	}
 	
 	public BTree(String fname, int degree) {
-		init_btree(fname, degree);
+		setupTreeFromDegree(degree);
+		init_btree(fname);
 	}
 	
 	
