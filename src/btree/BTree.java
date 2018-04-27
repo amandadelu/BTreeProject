@@ -78,7 +78,7 @@ public class BTree {
 		private void checkKeyOrder(BTreeObject key, int pos, BTreeNode rightchild) throws BTreeWrongKeyOrder, BTreeNoInternalNodeChild {			
 			if (pos > 0 && key.compareTo(keys[pos-1]) != -1)
 				throw new BTreeWrongKeyOrder();
-			if (pos < keycount && key.compareTo(keys[pos-1]) != 1)
+			if (pos < keycount && key.compareTo(keys[pos]) != 1)
 				throw new BTreeWrongKeyOrder();
 			
 			if (rightchild==null & !isLeaf)
@@ -120,7 +120,7 @@ public class BTree {
 				tmpchildren[i] = children[i];
 				keys[i] = null;
 			}
-			tmpchildren[pos] = children[pos+1];
+			tmpchildren[pos] = children[pos];
 			tmpkeys[pos] = key;
 			if (!isLeaf) {
 				tmpchildren[pos+1] = rightchild.id;	
@@ -128,9 +128,11 @@ public class BTree {
 			for (int i = pos; i < keycount; i++) {
 				tmpkeys[i+1] = keys[i];
 				tmpchildren[i+2] = children[i+1];
+				keys[i] = null;
 			}
 			//TODO split
 			//keycount = splitindex;
+			
 			return newnode;
 		}
 		
@@ -163,6 +165,7 @@ public class BTree {
 			id_parent = l.get();
 			long tmp = l.get();
 			keycount = (int)(tmp >> 8);
+			if (keycount > maxkeycount) throw new BTreeBadMetadata();
 			isLeaf = ((tmp & 1) == 1);
 	
 			for (int i=0; i<children.length; i++) {
@@ -192,8 +195,7 @@ public class BTree {
 	}
 	
 	private void open_btree(String fname, boolean readonly) throws IOException, BTreeBadMetadata, BTreeWrongBlockID {
-		String mode=readonly?"r":"rw";
-		storage = new RandomAccessFile(fname, mode);
+		storage = new RandomAccessFile(fname, readonly?"r":"rw");
 		byte[] buf = new byte[metaDatasize];
 		LongBuffer l = ByteBuffer.wrap(buf).asLongBuffer();
 		storage.seek(0);
