@@ -47,6 +47,15 @@ public class BTree {
 		}
 	}
 	
+	class MedianNode {
+		public BTreeNode left, right;
+		public BTreeObject key;
+		public MedianNode(BTreeObject key, BTreeNode left, BTreeNode right) {
+			this.key = key;
+			this.left=left;
+			this.right=right;
+		}
+	}
 	
 	class BTreeNode {
 		private long id;
@@ -108,10 +117,9 @@ public class BTree {
 			save();
 		}
 		
-		public BTreeNode splitNode(BTreeObject key, int pos, BTreeNode rightchild) throws BTreeNotFullNode, BTreeWrongKeyOrder, BTreeNoInternalNodeChild {
+		public MedianNode splitNode(BTreeObject key, int pos, BTreeNode rightchild) throws BTreeNotFullNode, BTreeWrongKeyOrder, BTreeNoInternalNodeChild {
 			if (keycount < maxkeycount)
 				throw new BTreeNotFullNode();
-			BTreeNode newnode = new BTreeNode(nodecount++, id_parent, isLeaf);
 			checkKeyOrder(key, pos, rightchild);
 			long[] tmpchildren = new long[order+1];
 			BTreeObject[] tmpkeys = new BTreeObject[maxkeycount+1];
@@ -132,8 +140,22 @@ public class BTree {
 			}
 			//TODO split
 			//keycount = splitindex;
-			
-			return newnode;
+			int mid = tmpkeys.length / 2;
+			keycount = mid;
+			for (int i = 0; i < keycount; i++) {
+				children[i] = tmpchildren[i];
+				keys[i] = tmpkeys[i];
+			}
+			children[mid] = tmpchildren[mid];
+			BTreeNode newnode = new BTreeNode(nodecount++, id_parent, isLeaf);
+		
+			for (int j=0, i=(mid + 1); i< tmpkeys.length; i++, j++) {
+				newnode.keys[j] = tmpkeys[i];
+				newnode.children[j] = tmpchildren[j];
+			}
+			newnode.keycount = tmpkeys.length - (mid + 1);
+			newnode.children[newnode.keycount] = tmpchildren[tmpchildren.length-1];
+			return new MedianNode(tmpkeys[mid], this, newnode);
 		}
 		
 		void save() throws IOException {
@@ -155,7 +177,7 @@ public class BTree {
 			storage.write(buff);
 		}
 		
-		void load() throws IOException, BTreeWrongBlockID {
+		void load() throws IOException, BTreeWrongBlockID, BTreeBadMetadata {
 			storage.seek(getNodeOffset(id));
 			byte[] buff = new byte[nodesize];
 			storage.read(buff);
