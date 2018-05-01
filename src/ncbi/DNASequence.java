@@ -4,7 +4,7 @@ import bterrors.DNABadCode;
 import bterrors.DNAWrongSequenceLength;
 
 public class DNASequence {
-	public static byte Let2Bin(char l) throws DNABadCode {
+	public static long Let2Bin(char l) throws DNABadCode {
 		switch(l) {
 		case 'A':
 		case 'a': return 0b00;

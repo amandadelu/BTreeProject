@@ -72,14 +72,16 @@ private boolean moveToNext() throws IOException, InterruptedException, DNAWrongS
 					continue;
 				} else {
 					Scanner tmpScan = new Scanner(tmp.trim());
-					System.err.println(tmpScan.next());
+					int lineno = tmpScan.nextInt();
+					//if (lineno%60000==1) System.err.println(lineno); 
+					//tmpScan.next();
 					//strChars = tmpScan.nextLine().trim().chars();
 					strQpos = 0;
 					strQ = tmpScan.nextLine().toCharArray();
 				}
 			} else {
 				char c = strQ[strQpos++];
-				System.out.println(c);
+				//System.out.println(c);
 				switch (c) {
 				case 'n':
 				case 'N':
