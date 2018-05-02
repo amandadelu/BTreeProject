@@ -17,14 +17,14 @@ public class DNASequence {
 		default: throw new DNABadCode();
 		}
 	}
-	public static char Bin2Let(long b) throws DNABadCode {
+	public static char Bin2Let(long b) {
 		switch((short)b & 0b11) {
 		case 0b00: return 'A';
 		case 0b11: return 'T';
 		case 0b01: return 'C';
 		case 0b10: return 'G';
-		default: throw new DNABadCode();
 		}
+		return 0;
 	}
 	
 	private long acc, leftmost; //, bitmask;
@@ -33,6 +33,15 @@ public class DNASequence {
 	public long getDNAKey() throws DNAWrongSequenceLength {
 		if (needlen > 0) throw new DNAWrongSequenceLength();
 		return acc;
+	}
+	
+	public static String getDNAString(int seqlen, long dnakey) {
+		char[] buf = new char[seqlen];
+		for (int i=0; i<seqlen; i++) {
+			buf[i] = Bin2Let(dnakey);
+			dnakey >>= 2;
+		}
+		return new String(buf);
 	}
 	public boolean isComplete() {
 		return needlen == 0;

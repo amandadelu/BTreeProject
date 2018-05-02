@@ -22,8 +22,8 @@ public class DNAInputTest {
 
 	public static void main(String[] args) throws DNAWrongSequenceLength, IOException, DNASequenceNotFound, InterruptedException, BTreeBadMetadata, BTreeWrongBlockID, BTreeNotFullNode, BTreeWrongKeyOrder, BTreeNoInternalNodeChild, BTreeFullNode, BTreeNonExactNonLeaf {
 		// TODO Auto-generated method stub
-		//file_test();
-		read_file_test();
+		file_test();
+		//read_file_test();
 		/*Scanner tmp = new Scanner(System.in);
 		byte b = 0;
 		while (b != 32) {
@@ -49,7 +49,7 @@ public class DNAInputTest {
 		DNAInput test = new DNAInput("7263_ref_ASM165402v1_chr2.gbk", seqlen);
 		BTree dnatree = new BTree("ddna1.btree", false, true, 500);
 		int cnt = 62;
-		while (test.hasNext() && cnt-->0) {
+		while (test.hasNext()) {
 			long nxt = test.Next();
 			//System.out.print(nxt+" ");
 			//dnatree.insertKey(new BTreeObject(nxt));
@@ -61,12 +61,13 @@ public class DNAInputTest {
 			
 			if (lkp.exact) {
 				lkp.foundkey.IncCounter();
-				//if (lkp.foundkey.getCounter()>100)
+				if (lkp.foundkey.getCounter()>1000)
 				   System.out.println(lkp.foundkey.toString());
 			}
 			
 			//System.out.printf(fmt_seq, Long.toBinaryString(nxt));
 		}
+		dnatree.dump(seqlen, "dump");
 		dnatree.shutdown();
 	}
 	

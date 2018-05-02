@@ -1,11 +1,16 @@
 package btree;
 
+import java.io.BufferedWriter;
+import java.io.FileWriter;
 import java.io.IOException;
 import java.io.RandomAccessFile;
 import java.nio.ByteBuffer;
 import java.nio.LongBuffer;
 import java.util.HashMap;
 import java.util.LinkedList;
+
+import javax.swing.DebugGraphics;
+
 import bterrors.BTreeBadMetadata;
 import bterrors.BTreeFullNode;
 import bterrors.BTreeNoInternalNodeChild;
@@ -16,7 +21,9 @@ import bterrors.BTreeWrongFileSize;
 import bterrors.BTreeWrongKeyOrder;
 import bterrors.BTreeWrongObjectSize;
 import bterrors.BTreeWrongRootNode;
+import bterrors.DNAWrongSequenceLength;
 import btree.BTree.Cache.NodeKeyPos;
+import ncbi.DNASequence;
 
 
 public class BTree {
@@ -399,7 +406,7 @@ public class BTree {
 	}
 
 	private void init_btree(String fname) throws IOException {
-		storage = new RandomAccessFile(fname, "rw");
+		storage = new RandomAccessFile(fname + "." + degree, "rw");
 		storage.setLength(getNodeOffset(1));
 		nodecount = 1;
 		rootnode = new BTreeNode(0, -1, true);
@@ -523,10 +530,50 @@ public class BTree {
 	    	        	     if (!readonly)
 	    	        	        delnode.saveToStorage();
 	    	         }
+	    	         if (DebugPrint.debuglevel>0) {
+	    	        	 DebugPrint.message(String.format("Cache: nodes %d, keys %d, cleanup queue %d nodes", nodemap.size(), keymap.size(), cleanupqueue.size()));
+	    	        	 
+	    	         }
 	    	    }
 	    	        
 	    }
 		
+	}
+	class KeyRightChild {
+		public BTreeObject key;
+		public long right;
+		public KeyRightChild(BTreeObject key, long right) {
+			this.key=key;
+			this.right=right;
+		}
+	}
+	public void dump(int seqlen, String dumpfname) throws DNAWrongSequenceLength, IOException, BTreeWrongBlockID, BTreeBadMetadata {
+		LinkedList<KeyRightChild> tovisitStack = new LinkedList<KeyRightChild>();
+		BufferedWriter buff = new BufferedWriter(new FileWriter(dumpfname));
+		BTreeNode curnode=rootnode;
+		while (curnode!=null) {
+			if (curnode.isLeaf) {
+				for (int i=0; i < curnode.keycount; i++) {
+					BTreeObject o = curnode.keys[i];
+					buff.write(o.getCounter() + " "+DNASequence.getDNAString(seqlen, o.getKey()));
+					buff.newLine();
+				}
+				if (tovisitStack.isEmpty()) curnode=null;
+				else {
+					KeyRightChild nxt = tovisitStack.removeFirst();
+					buff.write(nxt.key.getCounter() + " "+DNASequence.getDNAString(seqlen, nxt.key.getKey()));
+					buff.newLine();
+					curnode = getNode(nxt.right);
+				}
+				
+			} else {
+				for (int i = curnode.keycount; i > 0; i--) {
+					tovisitStack.addFirst(new KeyRightChild(curnode.keys[i-1], curnode.children[i]));
+				}
+				curnode = getNode(curnode.children[0]);
+			}
+		} 
+		buff.close();
 	}
 
 	public static void main(String[] args) throws IOException, BTreeBadMetadata, BTreeWrongBlockID, BTreeNotFullNode, BTreeWrongKeyOrder, BTreeNoInternalNodeChild, BTreeFullNode, BTreeNonExactNonLeaf {

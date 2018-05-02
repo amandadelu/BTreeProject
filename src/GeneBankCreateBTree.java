@@ -12,6 +12,7 @@ import bterrors.DNAWrongSequenceLength;
 import btree.BTree;
 import btree.BTree.NearestSearchResult;
 import btree.BTreeObject;
+import btree.DebugPrint;
 import ncbi.DNAInput;
 
 public class GeneBankCreateBTree {
@@ -61,14 +62,13 @@ public class GeneBankCreateBTree {
 		
 		BTree dnatree;
 		String treefname = fname + ".btree.data."+seqlen;
-		//TODO add degree to the tree filename
-		//rename file afterwards or modify BTRee constructor
 		if (degree>=2) {
 			dnatree = new BTree(treefname, degree, cachesize);
 		} else {
 			dnatree = new BTree(treefname, false, true, cachesize);
 		}
 		DNAInput dnaparser = new DNAInput(fname, seqlen);
+		long start = System.currentTimeMillis();
 		while (dnaparser.hasNext()) {
 			long dnakey = dnaparser.Next();
 			BTreeObject newkey = new BTreeObject(dnakey);
@@ -76,21 +76,25 @@ public class GeneBankCreateBTree {
 			if (check.exact) {
 				check.foundkey.IncCounter();
 				check.saveNode();
-				if (DebugPrint.debuglevel>=0) {
+				if (DebugPrint.debuglevel>0) {
 					DebugPrint.message(String.format("Incrementing key %d to %d count", check.foundkey.getKey(), check.foundkey.getCounter()));
 				}
 			} else {
 				newkey.IncCounter();
 				//newkey.IncCounter();
 				dnatree.insertToFoundLoc(check);
-				if (DebugPrint.debuglevel>=0) {
+				if (DebugPrint.debuglevel>0) {
 					DebugPrint.message(String.format("Inserting key %d", newkey.getKey()));
 				}
 			}
 			
 		}
-		if (DebugPrint.debuglevel>0) {
-			//TODO output dump from tree traversal
+		if (DebugPrint.debuglevel>=0) {
+			if (DebugPrint.debuglevel>0) {
+				dnatree.dump(seqlen, "dump");
+				
+			}
+			DebugPrint.message("Finished in " + (System.currentTimeMillis()-start) + " ms");
 		}
 		dnatree.shutdown();
 		

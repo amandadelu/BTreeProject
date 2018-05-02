@@ -13,6 +13,7 @@ import bterrors.DNASequenceNotFound;
 import bterrors.DNAWrongSequenceLength;
 import btree.BTree;
 import btree.BTreeObject;
+import btree.DebugPrint;
 import btree.BTree.NearestSearchResult;
 import ncbi.DNAInput;
 import ncbi.DNASequence;
@@ -62,6 +63,7 @@ public class GeneBankSearch {
 		BTree dnatree=new BTree(btreefname, true, false, cachesize);
 		//DNAInput dnaparser = new DNAInput(fname, seqlen);
 		int seqlen = -1;
+		long start = System.currentTimeMillis();
 		BufferedReader buff = new BufferedReader(new FileReader(queryname));
 		String query = buff.readLine();
 		while (query!=null) {
@@ -85,7 +87,10 @@ public class GeneBankSearch {
 			
 			query = buff.readLine();
 		}
-
+		if (DebugPrint.debuglevel>=0) {
+			DebugPrint.message("Finished in " + (System.currentTimeMillis()-start) + " ms");
+		}
+		
 		buff.close();
 		dnatree.shutdown();		
 		
