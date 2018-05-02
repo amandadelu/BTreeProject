@@ -15,7 +15,6 @@ import btree.BTree;
 import btree.BTreeObject;
 import btree.DebugPrint;
 import btree.BTree.NearestSearchResult;
-import ncbi.DNAInput;
 import ncbi.DNASequence;
 
 public class GeneBankSearch {

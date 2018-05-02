@@ -24,44 +24,51 @@ import bterrors.BTreeWrongRootNode;
 import bterrors.DNAWrongSequenceLength;
 import btree.BTree.Cache.NodeKeyPos;
 import ncbi.DNASequence;
-
+/**
+ * main BTree class to hold BTreeObject as keys
+ * @author 
+ *
+ */
 
 public class BTree {
-	private int degree;
-	private int order;
-	private int maxkeycount;
-	private int nodesize;
-	private long nodecount;
-	private final static int def_blocksize = 4096;
-	private final static int metaDatasize = 4096;
-	private boolean readonly;
+	private int degree; //tree degree >= 2
+	private int order; //degree * 2
+	private int maxkeycount; //max keys per node =order-1
+	private int nodesize; //physical node size in bytes
+	private long nodecount; //total nodes in the tree
+	private final static int def_blocksize = 4096; //default block size for tree data
+	private final static int metaDatasize = 4096;  //excessive metaDatasize
+	private boolean readonly; //read only flag, if tree is opened for search only
 	
-	BTreeNode rootnode;
-	Cache cache;
+	BTreeNode rootnode; //root node of the tree
+	Cache cache; //cache instance if using Cache, otherwise null
 	
-	private RandomAccessFile storage;
-	private static final int node_overhead = 8*3;
-	private static int getNodeDataSize(int testdegree) {
-		int testorder = 2 * testdegree;
-		return node_overhead + 8 * testorder + BTreeObject.size *(testorder - 1);
+	private RandomAccessFile storage; //object to work with the BTree file with disk
+	private static final int node_overhead = 8*3; //additional data in node, 3 longs: node id, parent id, numkeys stored + leaf indicator
+	private static int getNodeDataSize(int testdegree) { //estimate node size based on testdegree
+		int testorder = 2 * testdegree; //calculate order
+		//overhead + 8 bytes per child reference + (order-1) BTreeObjects
+		return node_overhead + 8 * testorder + BTreeObject.size *(testorder - 1); 
 	}
-	
+	//calculate the offset of the node
 	private long getNodeOffset(long testid) {
+		//zero node immediately after the metaData
 		return metaDatasize + testid * nodesize;
 	}
-	
+	//estimate the maximal degree to fit the node into def_blocksize
 	private static int maxdegree(int testnodesize) {
-		int testdegree = 2;
-		int minnodesize = getNodeDataSize(testdegree);
-		if (minnodesize >= def_blocksize) {
+		int testdegree = 2; //minimal degree
+		int minnodesize = getNodeDataSize(testdegree); //minimum node size
+		if (minnodesize >= def_blocksize) { //stick to minimum degree
            return testdegree;
 		} else {
+			
 			return (def_blocksize - node_overhead + BTreeObject.size) / (8 + BTreeObject.size) / 2;
 		}
 	}
 	
 	class MedianNode {
-		// Class to carry meadian key from node split to left and right 
+		// Class to carry median key from node split to left and right 
 		public BTreeNode left, right;
 		public BTreeObject key;
 		public MedianNode(BTreeObject key, BTreeNode left, BTreeNode right) {
@@ -169,26 +176,35 @@ public class BTree {
         }
         
 	}
-	
+	/*
+	 * inner class that represents a node, node holds up to "order" of children node ids
+	 * and order - 1 BTreeObject as keys
+	 */
 	class BTreeNode {
-		private long id;
-		private long id_parent;
-		private long[] children;
-		private BTreeObject[] keys;
-		private int keycount;
-		private boolean isLeaf;
+		private long id; //node id
+		private long id_parent; //parent id
+		private long[] children; //array of children ids
+		private BTreeObject[] keys; //array of keys
+		private int keycount; //actual number of keys stored in node
+		private boolean isLeaf; //leaf indicator
 		
+		/*
+		 * constructor creates a node from id, parent, and leaf indicator. Allocates
+		 * storage for keys and children ids
+		 */
 		public BTreeNode(long id,long id_parent,boolean isLeaf) {
 			this.id = id;
 			this.id_parent = id_parent;
 			this.isLeaf = isLeaf;
-			children = new long[order];
-			for (int i=0; i< children.length; i++) children[i]=-1;
-			keys = new BTreeObject[maxkeycount];
-			keycount = 0;
+			children = new long[order]; //allocates children as order of longs
+			for (int i=0; i< children.length; i++) children[i]=-1; //mark as uninitialized
+			keys = new BTreeObject[maxkeycount]; //initialize keys
+			keycount = 0; //set key count to zero, node is empty
 			
 		}
-		
+		//function searches for nearest possible key inside the node
+		//returns the index for the first key larger or equal to sought key
+		//binary search
 		public int searchkey(BTreeObject key) {
 			int lo = 0, hi = keycount-1;
 			while (lo <= hi) {
@@ -203,7 +219,8 @@ public class BTree {
 			}
 			return lo;
 		}
-		
+		//helper function to validate the key for insertion at the given position
+		//also makes sure the right child is valid for non leaf node
 		private void checkKeyOrder(BTreeObject key, int pos, BTreeNode rightchild) throws BTreeWrongKeyOrder, BTreeNoInternalNodeChild {			
 			if (pos > 0 && key.compareTo(keys[pos-1]) != 1)
 				throw new BTreeWrongKeyOrder();
@@ -213,126 +230,125 @@ public class BTree {
 			if (rightchild==null & !isLeaf)
 				throw new BTreeNoInternalNodeChild();			
 		}
-		
+		//insert to not full node 
 		public void insertkey(BTreeObject key, int pos, BTreeNode rightchild) throws BTreeWrongKeyOrder, BTreeFullNode, BTreeNoInternalNodeChild, IOException {
 			if (keycount == maxkeycount)
 				throw new BTreeFullNode();
-			checkKeyOrder(key, pos, rightchild);
-			//TODO more efficient insert
-			for (int i = keycount; i>pos; i--) {
-				keys[i] = keys[i-1];
+			checkKeyOrder(key, pos, rightchild); //check key order for insert position
+			for (int i = keycount; i>pos; i--) { //move keys from insert pos to the right
+				keys[i] = keys[i-1]; //free from the right all the way to insert position
 			}
-			keys[pos] = key;
-			if (!isLeaf) {
+			keys[pos] = key; //put key to insert position
+			if (!isLeaf) { //move all the right children by one to the right 
 				for (int i = keycount; i>pos; i--) {
 					children[i+1] = children[i];
 				}
-				children[pos+1] = rightchild.id;
-				rightchild.id_parent = this.id;
-				rightchild.save();
+				children[pos+1] = rightchild.id; //insert the right child
+				rightchild.id_parent = this.id; //update right child's parent id
+				rightchild.save(); //save the right child
 			}
-			keycount++;
-			save();
+			keycount++; //advance key count
+			save(); //save current node
 		}
-		
+		//inserts into full node by splitting it on the median and pushing the median to the parent node
 		public MedianNode splitNode(BTreeObject key, int pos, BTreeNode rightchild) throws BTreeNotFullNode, BTreeWrongKeyOrder, BTreeNoInternalNodeChild, BTreeWrongBlockID, BTreeBadMetadata, IOException {
-			if (keycount < maxkeycount)
-				throw new BTreeNotFullNode();
-			checkKeyOrder(key, pos, rightchild);
-			long[] tmpchildren = new long[order+1];
-			BTreeObject[] tmpkeys = new BTreeObject[maxkeycount+1];
-			for (int i = 0; i < pos; i++) {
-				tmpkeys[i] = keys[i];
+			if (keycount < maxkeycount) //check if node is not full
+				throw new BTreeNotFullNode(); 
+			checkKeyOrder(key, pos, rightchild); //check if insertion position is correct
+			long[] tmpchildren = new long[order+1]; //allocate temp array for children with one extra space
+			BTreeObject[] tmpkeys = new BTreeObject[maxkeycount+1]; //allocate temp array for keys with one extra space
+			for (int i = 0; i < pos; i++) { //move all the keys and left children before the insert position to temp array
+				tmpkeys[i] = keys[i]; 
 				tmpchildren[i] = children[i];
 				keys[i] = null;
 			}
-			tmpchildren[pos] = children[pos];
-			tmpkeys[pos] = key;
-			if (!isLeaf) {
-				tmpchildren[pos+1] = rightchild.id;	
+			tmpchildren[pos] = children[pos]; //move the left child of the insert position
+			tmpkeys[pos] = key; //insert the key
+			if (!isLeaf) { //if not a leaf
+				tmpchildren[pos+1] = rightchild.id;	//insert the new right child to the right of insert position
 			} 
-			for (int i = pos; i < keycount; i++) {
+			for (int i = pos; i < keycount; i++) { //move the rest of the keys and right children
 				tmpkeys[i+1] = keys[i];
 				tmpchildren[i+2] = children[i+1];
 				keys[i] = null;
 			}
 			
-			int mid = tmpkeys.length / 2;
-			keycount = mid;
-			for (int i = 0; i < keycount; i++) {
+			int mid = tmpkeys.length / 2; //identify median index
+			keycount = mid; //old location keep keys and children left to median
+			for (int i = 0; i < keycount; i++) { //move the keys and left children before median to their original node
 				children[i] = tmpchildren[i];
 				keys[i] = tmpkeys[i];
 			}
-			children[mid] = tmpchildren[mid];
-			BTreeNode newnode = new BTreeNode(nodecount++, id_parent, isLeaf);
+			children[mid] = tmpchildren[mid]; //move the last right child to the original node
+			BTreeNode newnode = new BTreeNode(nodecount++, id_parent, isLeaf); //create new node
 
 		
-			for (int j=0, i=(mid + 1); i< tmpkeys.length; i++, j++) {
-				newnode.keys[j] = tmpkeys[i];
+			for (int j=0, i=(mid + 1); i< tmpkeys.length; i++, j++) { //move keys and left children past the median to the new node
+				newnode.keys[j] = tmpkeys[i]; //move the key
 				if (!isLeaf) {
-					BTreeNode tmpchild = getNode(tmpchildren[i]);
+					BTreeNode tmpchild = getNode(tmpchildren[i]); //go into each child and update the parent
 					newnode.children[j] = tmpchild.id;
 					tmpchild.id_parent=newnode.id;
 					tmpchild.save();
 				}
 			}
-			newnode.keycount = tmpkeys.length - (mid + 1);
+			newnode.keycount = tmpkeys.length - (mid + 1); //update key count for a new node
 			if (!isLeaf) {
-				BTreeNode tmpchild = getNode(tmpchildren[tmpchildren.length-1]); //new BTreeNode(tmpchildren[tmpchildren.length-1], -1, false);
-				newnode.children[newnode.keycount] = tmpchild.id;
+				BTreeNode tmpchild = getNode(tmpchildren[tmpchildren.length-1]); 
+				newnode.children[newnode.keycount] = tmpchild.id; //move and update the last right child
 				tmpchild.id_parent=newnode.id;
 				tmpchild.save();
 			}
-			this.save();
-			newnode.save();
-			return new MedianNode(tmpkeys[mid], this, newnode);
+			this.save(); //save current node
+			newnode.save(); //save split node
+			return new MedianNode(tmpkeys[mid], this, newnode); //return median key with left child and right child
 		}
-		
+		//save function saves to storage or cache if using cache
 		void save() throws IOException {
 			if (cache==null) saveToStorage();
 			else cache.AddToCache(this);
 		}
-		
+		//physically saves node to the file
 		void saveToStorage() throws IOException {
 			// Make sure the file is long enough
-			long needfilesize = getNodeOffset(id + 1);
-			if (storage.length() < needfilesize) storage.setLength(needfilesize);
-			storage.seek(getNodeOffset(id));
-			byte[] buff = new byte[nodesize];
-			LongBuffer l = ByteBuffer.wrap(buff).asLongBuffer();
-			l.put(id);
-			l.put(id_parent);
-			l.put((keycount << 8) | (isLeaf?1:0));
+			long needfilesize = getNodeOffset(id + 1); //allocate the file space for the node
+			if (storage.length() < needfilesize) storage.setLength(needfilesize); 
+			storage.seek(getNodeOffset(id)); //navigate to node location in file
+			byte[] buff = new byte[nodesize]; //allocate the byte buffer to hold the node
+			LongBuffer l = ByteBuffer.wrap(buff).asLongBuffer(); //set up as buffer of long
+			l.put(id); //put node id
+			l.put(id_parent); //put parent id
+			l.put((((long)keycount) << 8) | (isLeaf?1:0)); //combine and write 4 byte key count and boolean id into 8 byte
 			for (long cref: children) {
-				l.put(cref);
+				l.put(cref); //write each child id
 			}
-			for (int i=0; i<keycount; i++) {
+			for (int i=0; i<keycount; i++) { //for every valid key ask it to write itself to the buffer
 				keys[i].toBuffer(l);
 			}
-			storage.write(buff);
+			storage.write(buff); //write buffer to file
 		}
 		
 		void loadFromStorage() throws IOException, BTreeWrongBlockID, BTreeBadMetadata {
-			storage.seek(getNodeOffset(id));
-			byte[] buff = new byte[nodesize];
-			storage.read(buff);
-			LongBuffer l = ByteBuffer.wrap(buff).asLongBuffer();
-			long check_id = l.get();
-			if (id!=check_id) throw new BTreeWrongBlockID();
-			id_parent = l.get();
-			long tmp = l.get();
-			keycount = (int)(tmp >> 8);
-			if (keycount > maxkeycount) throw new BTreeBadMetadata();
-			isLeaf = ((tmp & 1) == 1);
+			storage.seek(getNodeOffset(id)); //navigate to node location file
+			byte[] buff = new byte[nodesize]; //allocate the byte buffer to hold the node
+			storage.read(buff); //reads buffer
+			LongBuffer l = ByteBuffer.wrap(buff).asLongBuffer(); //set up as buffer of long
+			long check_id = l.get(); //read data peice by peice
+			if (id!=check_id) throw new BTreeWrongBlockID(); //id from file matches the requested node id
+			id_parent = l.get(); //read parent
+			long tmp = l.get(); //read combined key count and leaf indicator
+			keycount = (int)(tmp >> 8); //extract key count
+			if (keycount > maxkeycount) throw new BTreeBadMetadata(); //check key count is valid
+			isLeaf = ((tmp & 1) == 1); //extract leaf indicator
 	
-			for (int i=0; i<children.length; i++) {
-				children[i]=l.get();
+			for (int i=0; i<children.length; i++) { //read children node ids
+				children[i]=l.get(); 
 			}
-			for (int i=0; i<keycount; i++) {
-				keys[i] = new BTreeObject(0);
-				keys[i].fromBuffer(l);
+			for (int i=0; i<keycount; i++) { //tell keys to read themselves
+				keys[i] = new BTreeObject(0); //create empty key
+				keys[i].fromBuffer(l); //tell it to read itself
 			}
-			if (cache!=null) cache.AddToCache(this);
+			if (cache!=null) cache.AddToCache(this); //add node to cache if using cache
 			
 		}
 	}
@@ -348,115 +364,118 @@ public class BTree {
 		return ret;
 	}
 	
-	
+/*
+ * constructor initialize a tree with optimal degree or open existing tree
+ */
 	public BTree(String fname, boolean readonly, boolean init, int cachesize) throws IOException, BTreeBadMetadata, BTreeWrongBlockID {
-		if (init) {
-			setupOptimalTree();
-			init_btree(fname);
-		} else {
-			open_btree(fname, readonly);
+		if (init) { //initialize new tree
+			setupOptimalTree(); //figure out degree
+			init_btree(fname); //ready to initialize btree
+		} else { //if not asking to initialize just open btree
+			open_btree(fname, readonly); 
 		}
-		setupCache(cachesize);
-		this.readonly=readonly;
+		setupCache(cachesize); //set up cache
+		this.readonly=readonly; //read only will be determined by arguement 
 	}
-	
+	/*
+	 * constructor initialize the tree with specific degree
+	 */
 	public BTree(String fname, int degree, int cachesize) throws IOException {
-		setupTreeFromDegree(degree);
-		init_btree(fname);
-		setupCache(cachesize);
-		readonly=false;
+		setupTreeFromDegree(degree); //calculate tree parameters based on degree
+		init_btree(fname); //initialize btree
+		setupCache(cachesize); //set up cache
+		readonly=false; //fresh tree 
 	}
-	
+	//initialize cache with given size if size more than zero
 	private void setupCache(int cachesize) {
 		if (cachesize > 0) {
 			cache = new Cache(cachesize);
-		} else {
+		} else { //otherwise null
 			cache = null;
 		}
 	}
-	
+	//function to open btree and verify the metadata
 	private void open_btree(String fname, boolean readonly) throws IOException, BTreeBadMetadata, BTreeWrongBlockID {
-		storage = new RandomAccessFile(fname, readonly?"r":"rw");
-		byte[] buf = new byte[metaDatasize];
-		LongBuffer l = ByteBuffer.wrap(buf).asLongBuffer();
-		storage.seek(0);
-		storage.read(buf);
-		degree = (int)l.get();
-		order = (int)l.get();
-		maxkeycount= (int)l.get();
-		if (order != 2 * degree || maxkeycount != order -1)
-			throw new BTreeBadMetadata();
-		nodecount = l.get();
-		nodesize = (int)l.get();
-		if (nodesize < getNodeDataSize(degree))
-			throw new BTreeBadMetadata();
-		if (storage.length() != getNodeOffset(nodecount))
+		storage = new RandomAccessFile(fname, readonly?"r":"rw"); //open file with desired mode read or write
+		byte[] buf = new byte[metaDatasize]; //allocate buffer to read metaData
+		LongBuffer l = ByteBuffer.wrap(buf).asLongBuffer(); //set up buffer as buffer for long
+		storage.seek(0); //move to pos zero in file
+		storage.read(buf); //read metaData
+		degree = (int)l.get(); //extract from metaData piece by piece
+		order = (int)l.get(); //reads the data in same order how save metaData writes them
+		maxkeycount= (int)l.get(); 
+		if (order != 2 * degree || maxkeycount != order -1) //order is double of degree
+			throw new BTreeBadMetadata(); //max key count is order - 1
+		nodecount = l.get(); //read node count
+		nodesize = (int)l.get(); //get nodesize
+		if (nodesize < getNodeDataSize(degree)) //nodesize cannot be smaller than the minimum size to store node data
+			throw new BTreeBadMetadata(); 
+		if (storage.length() != getNodeOffset(nodecount)) //check filesize vs node count
 			throw new BTreeWrongFileSize();
-		int objsize = (int)l.get();
-		if (objsize != BTreeObject.size)
+		int objsize = (int)l.get(); //read objsize 
+		if (objsize != BTreeObject.size) //checking its correct
 			throw new BTreeWrongObjectSize();
-		long rootid = l.get();
-		if (getNodeOffset(1 + rootid) > storage.length())
+		long rootid = l.get(); //obtain id of root node
+		if (getNodeOffset(1 + rootid) > storage.length()) //to make sure root id represents node in tree
 			throw new BTreeWrongRootNode();
-		rootnode = getNode(rootid);
+		rootnode = getNode(rootid); //read root node from file or cache
 			
-		//rootnode.load();
-		if (rootnode.id_parent != -1)
+		if (rootnode.id_parent != -1) //root node should have no parent
 			throw new BTreeWrongRootNode();
 	}
-
-	private void init_btree(String fname) throws IOException {
-		storage = new RandomAccessFile(fname + "." + degree, "rw");
-		storage.setLength(getNodeOffset(1));
-		nodecount = 1;
-		rootnode = new BTreeNode(0, -1, true);
-		rootnode.save();
-		saveMetaData();
+	//new tree initialization assuming tree, degree, order, node size all set up
+	private void init_btree(String fname) throws IOException { 
+		storage = new RandomAccessFile(fname + "." + degree, "rw"); //create the new tree file
+		storage.setLength(getNodeOffset(1)); //sets the length for metaData and node zero
+		nodecount = 1; //fresh tree only has one node
+		rootnode = new BTreeNode(0, -1, true); //create empty root node
+		rootnode.save(); //save root node
+		saveMetaData(); //save MetaData
 		
 		
 	}
-
+	//save tree MetaData
 	private void saveMetaData() throws IOException {
-		byte[] buf = new byte[metaDatasize];
-		LongBuffer l = ByteBuffer.wrap(buf).asLongBuffer();
-		l.put(degree);
-		l.put(order);
-		l.put(maxkeycount);
-		l.put(nodecount);
-		l.put(nodesize);
-		l.put(BTreeObject.size);
-		l.put(rootnode.id);
-		storage.seek(0);
-		storage.write(buf);
+		byte[] buf = new byte[metaDatasize]; //create buffer
+		LongBuffer l = ByteBuffer.wrap(buf).asLongBuffer(); //set up as buffer of longs
+		l.put(degree); //put degree data 
+		l.put(order); //put order data
+		l.put(maxkeycount); //put maxkeycount data
+		l.put(nodecount); //put node count how many nodes in tree 
+		l.put(nodesize); //put node size
+		l.put(BTreeObject.size); //size of the key object
+		l.put(rootnode.id); //id of the root node, where it starts
+		storage.seek(0); //navigate to beginning of file
+		storage.write(buf); //write buffer to file
 		
 	}
-
-	private void setupOptimalTree() {
-		this.degree = maxdegree(def_blocksize);
-		this.order = this.degree << 1;
-		this.maxkeycount = this.order - 1;
-		this.nodesize = ((getNodeDataSize(degree) - 1) / def_blocksize + 1) * def_blocksize;
+	//calculates optimal degree order max key count and node size
+	private void setupOptimalTree() { 
+		this.degree = maxdegree(def_blocksize); //calculate maximum degree to fit one node into block
+		this.order = this.degree << 1; //calculate order double of degree
+		this.maxkeycount = this.order - 1; //maxkeycount as order - 1
+		this.nodesize = ((getNodeDataSize(degree) - 1) / def_blocksize + 1) * def_blocksize; 
 	}
 
 
 	
-
+	
 	private void setupTreeFromDegree(int degree) {
-		if (degree < 2) throw new IllegalArgumentException();
-		this.degree = degree;
-		this.order = degree << 1;
-		this.maxkeycount = this.order - 1;
-		this.nodesize = getNodeDataSize(degree);
+		if (degree < 2) throw new IllegalArgumentException(); //check degree
+		this.degree = degree; //store degree
+		this.order = degree << 1; //calculate order
+		this.maxkeycount = this.order - 1; //calculate maxkeycount
+		this.nodesize = getNodeDataSize(degree); //do whatever node size for this degree
 		
 	}
 	
 	public void shutdown() throws IOException {
-		if (!readonly) {
-			if (cache!=null)
-			   cache.flush();
-			saveMetaData();
+		if (!readonly) { //if not open for read only save data
+			if (cache!=null) //active cache save everything to disk
+			   cache.flush(); 
+			saveMetaData(); //save tree MetaData
 		}
-		storage.close();
+		storage.close(); //close the file
 	}
 	
 	

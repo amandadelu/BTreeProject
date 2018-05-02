@@ -75,7 +75,8 @@ public class GeneBankCreateBTree {
 			NearestSearchResult check = dnatree.lookup(newkey);
 			if (check.exact) {
 				check.foundkey.IncCounter();
-				check.saveNode();
+				check.saveNode(); 
+				//need to save node explicitly incase we do not use cache
 				if (DebugPrint.debuglevel>0) {
 					DebugPrint.message(String.format("Incrementing key %d to %d count", check.foundkey.getKey(), check.foundkey.getCounter()));
 				}
