@@ -14,7 +14,11 @@ import btree.BTree.NearestSearchResult;
 import btree.BTreeObject;
 import btree.DebugPrint;
 import ncbi.DNAInput;
-
+/**
+ * 
+ * @author amandadelu, pjcory, joshsanders
+ *
+ */
 public class GeneBankCreateBTree {
     public static void usage() {
     	System.out.println("java GeneBankCreateBTree <0/1(no/with Cache)> <degree> <gbk file>"

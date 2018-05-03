@@ -26,7 +26,7 @@ import btree.BTree.Cache.NodeKeyPos;
 import ncbi.DNASequence;
 /**
  * main BTree class to hold BTreeObject as keys
- * @author amandadelu, 
+ * @author amandadelu, pjcory, joshsanders
  *
  */
 

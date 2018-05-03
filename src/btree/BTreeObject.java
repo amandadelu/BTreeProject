@@ -2,7 +2,7 @@ package btree;
 import java.nio.LongBuffer;
 /**
  * key/counter object to store in the tree
- * @author 
+ * @author amandadelu, pjcory, joshsanders
  *
  */
 public class BTreeObject implements Comparable<BTreeObject> {
