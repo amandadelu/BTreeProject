@@ -26,7 +26,7 @@ import btree.BTree.Cache.NodeKeyPos;
 import ncbi.DNASequence;
 /**
  * main BTree class to hold BTreeObject as keys
- * @author 
+ * @author amandadelu, 
  *
  */
 
@@ -88,39 +88,42 @@ public class BTree {
 		public void saveNode() throws IOException {
 			node.save();
 		}
+		//supplies key navigates to nearest possible key
+		//dual purpose: finds a key or stops at the insert position for the key if its not in the tree
 		public NearestSearchResult(BTreeObject searchkey) throws BTreeWrongBlockID, BTreeBadMetadata, IOException, BTreeNonExactNonLeaf {
-			NodeKeyPos checkcache;
+			NodeKeyPos checkcache; //create empty cache
 			if (cache!=null) {
-				checkcache = cache.byKey(searchkey.getKey());
+				checkcache = cache.byKey(searchkey.getKey()); //get it from cache
 				if (checkcache!=null) {
-					foundkey=checkcache.key;
-					node=checkcache.node;
-					pos=checkcache.pos;
-					exact=true;
-					return;
+					foundkey=checkcache.key; //key found in cache
+					node=checkcache.node; //node from cache that contains key
+					pos=checkcache.pos; //key pos in node
+					exact=true; //mark it as exact
+					return; //done 
 				}
 			}
 			
-			needkey = searchkey;
-			BTreeNode prevnode=null;
-			node=rootnode;
+			needkey = searchkey; //when dont use cache or key is missing
+			BTreeNode prevnode=null; //temp var for prev node
+			node=rootnode; //starting from the root, traverse the tree node by node
 			while (true) {
-				pos = node.searchkey(needkey);
+				pos = node.searchkey(needkey); //find position of nearest key inside the node
 				if ((pos >= node.keycount || node.keys[pos].compareTo(needkey)!=0)) {
-					if (!node.isLeaf) {
-						prevnode = node;
-						node = getNode(node.children[pos]);
-						if (node.id_parent!=prevnode.id) {
-							System.out.printf("%d %d %d %d%n", prevnode.id, prevnode.id_parent, node.id, node.id_parent);
+					//check if we have not found matching key
+					if (!node.isLeaf) { //positioned to descend 
+						prevnode = node; //save current node to previous
+						node = getNode(node.children[pos]); //advanced current node to children node at pos where we stopped
+						if (node.id_parent!=prevnode.id) { //check parent and child relationship
+							System.err.printf("%d %d %d %d%n", prevnode.id, prevnode.id_parent, node.id, node.id_parent);
 							throw new BTreeWrongBlockID();
 						}
-					} else break;
-				} else break;
+					} else break; //no where to descend in the leaf
+				} else break; //found exact match
 			}
-			exact = (pos < node.keycount && node.keys[pos].compareTo(needkey)==0);
-			if (!exact && !node.isLeaf) throw new BTreeNonExactNonLeaf();
+			exact = (pos < node.keycount && node.keys[pos].compareTo(needkey)==0); //check if found exact, key equal to key we searched for
+			if (!exact && !node.isLeaf) throw new BTreeNonExactNonLeaf(); //check, non exact match only possible in leaf
 			if (exact) {
-				foundkey = node.keys[pos];
+				foundkey = node.keys[pos]; //set found key for exact match if found 
 			} else {
 				foundkey=null;
 			}
@@ -128,49 +131,49 @@ public class BTree {
 			
 		}
 	}
-	
+	//interfaces, takes key and returns nearest search result instance
 	public NearestSearchResult lookup(BTreeObject key) throws BTreeWrongBlockID, BTreeBadMetadata, BTreeNonExactNonLeaf, IOException {
 		return new NearestSearchResult(key);
 	}
-	
+	//looks for nearest key and inserts the key there
 	public void insertKey(BTreeObject key) throws BTreeNotFullNode, BTreeWrongKeyOrder, BTreeNoInternalNodeChild, BTreeWrongBlockID, BTreeBadMetadata, BTreeFullNode, BTreeNonExactNonLeaf, IOException {
 		insertToFoundLoc(new NearestSearchResult(key));
 	}
-	
+	//inserts the needkey from nearest search result 
 	public void insertToFoundLoc(NearestSearchResult res) throws BTreeNotFullNode, BTreeWrongKeyOrder, BTreeNoInternalNodeChild, BTreeWrongBlockID, BTreeBadMetadata, IOException, BTreeFullNode {
-		if (res.exact) {
+		if (res.exact) { //check if search result is exact, dont insert in that case
 			return;
 		}
-        BTreeNode insnode=res.node;
-        MedianNode med = new MedianNode(res.needkey, null, null);
-        int pos = res.pos;
-        while (insnode.keycount >= maxkeycount) {
-   
-        	     med = insnode.splitNode(med.key, pos, med.right);
+        BTreeNode insnode=res.node; //provides insertion point 
+        MedianNode med = new MedianNode(res.needkey, null, null); //dummy median node to insert to leaf
+        int pos = res.pos; //get insertion position in the current node
+        while (insnode.keycount >= maxkeycount) { //while node is full split it exact median and try to insert it to the parent
+        	//current node is full
+        	     med = insnode.splitNode(med.key, pos, med.right); //split node and obtain a new median with right and left child
 
-        	     if (insnode.id_parent==-1) {
+        	     if (insnode.id_parent==-1) { //if we split root node then break nothing else to split nothing above root node
         	    	     insnode = null;
         	    	     break;
         	     }
-        	     BTreeNode parent = getNode(insnode.id_parent);
+        	     BTreeNode parent = getNode(insnode.id_parent); //otherwise move to the parent of the node we split
 
-        	     if (insnode.id_parent!=parent.id) throw new BTreeWrongBlockID();
-        	     insnode = parent;
-        	     pos = insnode.searchkey(med.key);
+        	     if (insnode.id_parent!=parent.id) throw new BTreeWrongBlockID(); //check that id parent is actually parent id of current node
+        	     insnode = parent; //set insertion node to parent
+        	     pos = insnode.searchkey(med.key); //figure out insertion position for the new median
         }
-        if (insnode!=null) {
-        	    insnode.insertkey(med.key, pos, med.right);
-        	    if (insnode.id_parent==-1) rootnode = insnode;
-
+        if (insnode!=null) { //found the internal node with space
+        	    insnode.insertkey(med.key, pos, med.right); //node function to insert the key in the node which has space
+        	    if (insnode.id_parent==-1) rootnode = insnode; //in case were inserting in root node update root node reference
+               // insnode.save();
         } else {
-        	    rootnode = new BTreeNode(nodecount++, -1, false);
-        	    rootnode.keycount=1;
-        	    rootnode.keys[0] = med.key;
-        	    rootnode.children[0] = med.left.id;
-        	    rootnode.children[1] = med.right.id;
-        	    med.left.id_parent=rootnode.id;
+        	    rootnode = new BTreeNode(nodecount++, -1, false); //if we end up splitting root itself, create new root containing the last median with left and right children
+        	    rootnode.keycount=1; //only one key, the last median
+        	    rootnode.keys[0] = med.key; //set what the key is
+        	    rootnode.children[0] = med.left.id; //set children left and right
+        	    rootnode.children[1] = med.right.id; 
+        	    med.left.id_parent=rootnode.id; //came without knowing who parent is set new root as parent
         	    med.right.id_parent=rootnode.id;
-        	    rootnode.save();
+        	    rootnode.save(); //save all three
         	    med.left.save();
         	    med.right.save();
         }
@@ -352,14 +355,14 @@ public class BTree {
 			
 		}
 	}
-	
+	//obtain the node from cache or physical storage, provide id of node you want
 	private BTreeNode getNode(long id) throws IOException, BTreeWrongBlockID, BTreeBadMetadata {
-		BTreeNode ret=null;
-		if (cache!=null)
-		   ret = cache.byNodeID(id);
-		if (ret==null) {
-			ret = new BTreeNode(id, -1, false);
-			ret.loadFromStorage();
+		BTreeNode ret=null; //allocate reference to node
+		if (cache!=null) //check if cache is not null try to obtain from cache
+		   ret = cache.byNodeID(id); 
+		if (ret==null) { //if not using cache or node is not in cache 
+			ret = new BTreeNode(id, -1, false); //create empty instance of the node
+			ret.loadFromStorage(); //load it from storage
 		} 
 		return ret;
 	}
@@ -478,16 +481,22 @@ public class BTree {
 		storage.close(); //close the file
 	}
 	
-	
+	/*
+	 * inner cache class
+	 */
 	class Cache {
-		class NodeTS {
-			public long node_id;
+		class NodeTS { //holds node id and time stamp of last access for cleanup queue
+			public long node_id; //initialize
 			public long lastaccess;
-			public NodeTS (long node_id, long ts) {
+			public NodeTS (long node_id, long ts) { 
 				this.node_id = node_id;
 				this.lastaccess = ts;
 			}
 		}
+		/*
+		 * cache entry for the key
+		 * stores the key the node that contains key and position of key in node
+		 */
 		class NodeKeyPos {
 			BTreeNode node;
 			BTreeObject key;
@@ -498,12 +507,14 @@ public class BTree {
 				this.pos=pos;
 			}
 		}
-		private HashMap<Long, BTreeNode> nodemap;
-		private HashMap<Long, Long> nodetsmap;
-		private HashMap<Long, NodeKeyPos> keymap;
-		private int size;
-		private LinkedList<NodeTS> cleanupqueue;
-		
+		private HashMap<Long, BTreeNode> nodemap; //hashmap to look up node instance by node id 
+		private HashMap<Long, Long> nodetsmap; //hashmap for node id and last access time stamp 
+		private HashMap<Long, NodeKeyPos> keymap; //hashmap for keys to look up node key position
+		private int size; //maximum cache size
+		private LinkedList<NodeTS> cleanupqueue; //clean up queue, pairs of node id and time stamp when placed in queue
+		/*
+		 * constructor initializes all as empty and sets size to desired size
+		 */
 		public Cache(int size) {
 			this.size=size;
 			nodemap = new HashMap<Long, BTreeNode>();
@@ -511,45 +522,46 @@ public class BTree {
 			nodetsmap = new HashMap<Long, Long>();
 			cleanupqueue = new LinkedList<NodeTS>();
 		}
-		
+		//physically writes the cache contents to the disk
 		public void flush() throws IOException {
 			for (BTreeNode node: nodemap.values()) {
-				node.saveToStorage();
+				node.saveToStorage(); //tell each node to save itself
 			}
 		}
+		//look up by node id
 		public BTreeNode byNodeID(long node_id) throws IOException {
-			BTreeNode ret = nodemap.get(node_id);
+			BTreeNode ret = nodemap.get(node_id); 
 			if (ret!=null)
-				AddToCache(ret);
+				AddToCache(ret); //refresh it in cache if found 
 			return ret;
 		}
 		
 		public NodeKeyPos byKey(long needkey) {
-			return keymap.get(needkey);
+			return keymap.get(needkey); //lookup class that holds node key and position by key 
 		}
-		
+		//how you add node to cache
 	    public void AddToCache(BTreeNode node) throws IOException {
-	    	    nodemap.put(node.id, node);
-	    	    long ts = System.nanoTime();
-	    	    nodetsmap.put(node.id, ts);
-	    	    cleanupqueue.add(new NodeTS(node.id, ts));
-	    	    for (int i=0; i< node.keycount; i++) {
-	    	    	    keymap.put(node.keys[i].getKey(), new NodeKeyPos(node, node.keys[i], i));
+	    	    nodemap.put(node.id, node); //put node to hashmap by its node id
+	    	    long ts = System.nanoTime(); //mark the time stamp 
+	    	    nodetsmap.put(node.id, ts); //put the time stamp to the hashmap of time stamps by node id
+	    	    cleanupqueue.add(new NodeTS(node.id, ts)); //puts the node id with current time stamp in the clean up queue
+	    	    for (int i=0; i< node.keycount; i++) { //put all keys from the node to the key 
+	    	    	    keymap.put(node.keys[i].getKey(), new NodeKeyPos(node, node.keys[i], i)); //builds structure for where to find key
 	    	    }
-	    	    while (nodemap.size() > this.size)  {
-	    	         NodeTS cand = cleanupqueue.removeFirst();
-	    	         Long check_ts = nodetsmap.get(cand.node_id);
-	    	         if (check_ts!=null && cand.lastaccess >= check_ts) {
-	    	        	     BTreeNode delnode = nodemap.get(cand.node_id);
-	    	        	     for (int i=0; i< delnode.keycount; i++) {
-	    	        	    	     keymap.remove(delnode.keys[i].getKey());
+	    	    while (nodemap.size() > this.size)  { //make sure we don't hold more nodes than cache size
+	    	         NodeTS cand = cleanupqueue.removeFirst(); //take oldest entry from clean up queue
+	    	         Long check_ts = nodetsmap.get(cand.node_id); //obtain the current time stamp for the node from the clean up queue
+	    	         if (check_ts!=null && cand.lastaccess >= check_ts) { //check if the node was accessed meaning its current time stamp is larger than the one saved in clean up queue
+	    	        	     BTreeNode delnode = nodemap.get(cand.node_id); //if not the case, proceed to deleting node
+	    	        	     for (int i=0; i< delnode.keycount; i++) { 
+	    	        	    	     keymap.remove(delnode.keys[i].getKey()); //delete all keys from keymap that belong to this node
 	    	        	     }
-	    	        	     nodetsmap.remove(delnode.id);
-	    	        	     nodemap.remove(delnode.id);
-	    	        	     if (!readonly)
+	    	        	     nodetsmap.remove(delnode.id); //remove the current time stamp from this node
+	    	        	     nodemap.remove(delnode.id); //remove the node itself from cache 
+	    	        	     if (!readonly) //if not read only, save the node
 	    	        	        delnode.saveToStorage();
 	    	         }
-	    	         if (DebugPrint.debuglevel>0) {
+	    	         if (DebugPrint.debuglevel>0) { //prints cache statistics
 	    	        	 DebugPrint.message(String.format("Cache: nodes %d, keys %d, cleanup queue %d nodes", nodemap.size(), keymap.size(), cleanupqueue.size()));
 	    	        	 
 	    	         }
@@ -558,6 +570,9 @@ public class BTree {
 	    }
 		
 	}
+	/*
+	 * helper class for the dump to bind key and right child to store in the tovisitStack
+	 */
 	class KeyRightChild {
 		public BTreeObject key;
 		public long right;
@@ -566,36 +581,41 @@ public class BTree {
 			this.right=right;
 		}
 	}
+	//dump tree in the inorder (LNR)
+	//using non recursive algorithm with stack 
 	public void dump(int seqlen, String dumpfname) throws DNAWrongSequenceLength, IOException, BTreeWrongBlockID, BTreeBadMetadata {
-		LinkedList<KeyRightChild> tovisitStack = new LinkedList<KeyRightChild>();
-		BufferedWriter buff = new BufferedWriter(new FileWriter(dumpfname));
-		BTreeNode curnode=rootnode;
-		while (curnode!=null) {
-			if (curnode.isLeaf) {
-				for (int i=0; i < curnode.keycount; i++) {
-					BTreeObject o = curnode.keys[i];
+		LinkedList<KeyRightChild> tovisitStack = new LinkedList<KeyRightChild>(); //stack of left behind nodes
+		BufferedWriter buff = new BufferedWriter(new FileWriter(dumpfname)); //output file
+		BTreeNode curnode=rootnode; //start from the root node
+		while (curnode!=null) { //until there are no more nodes 
+			if (curnode.isLeaf) { //check if node is leaf or not
+				for (int i=0; i < curnode.keycount; i++) { //output all the keys from left to right 
+					BTreeObject o = curnode.keys[i]; 
 					buff.write(o.getCounter() + " "+DNASequence.getDNAString(seqlen, o.getKey()));
 					buff.newLine();
-				}
+				} //after you output leaf content check the tovisitStack for left behind branches of tree
 				if (tovisitStack.isEmpty()) curnode=null;
-				else {
-					KeyRightChild nxt = tovisitStack.removeFirst();
+				else { //if not empty extract very first entry and traverse 
+					KeyRightChild nxt = tovisitStack.removeFirst(); 
+					//output the key left behind 
 					buff.write(nxt.key.getCounter() + " "+DNASequence.getDNAString(seqlen, nxt.key.getKey()));
 					buff.newLine();
-					curnode = getNode(nxt.right);
+					curnode = getNode(nxt.right); //proceed to right child
 				}
 				
-			} else {
+			} else { //if its not a leaf, put all keys with right children into tovisitStack starting from the largest key 
 				for (int i = curnode.keycount; i > 0; i--) {
+					//push every key with its right child to the stack
 					tovisitStack.addFirst(new KeyRightChild(curnode.keys[i-1], curnode.children[i]));
 				}
-				curnode = getNode(curnode.children[0]);
+				curnode = getNode(curnode.children[0]); //move on to the very left child
 			}
 		} 
 		buff.close();
 	}
 
 	public static void main(String[] args) throws IOException, BTreeBadMetadata, BTreeWrongBlockID, BTreeNotFullNode, BTreeWrongKeyOrder, BTreeNoInternalNodeChild, BTreeFullNode, BTreeNonExactNonLeaf {
+		//the function to test btree with sequence of numbers
 		//BTree test1 = new BTree("test1.tree", 2);
 		//BTree test2 = new BTree("test2.tree", 4);
 		//@SuppressWarnings("unused")

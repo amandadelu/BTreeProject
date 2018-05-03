@@ -10,7 +10,7 @@ import bterrors.DNAWrongSequenceLength;
  * Reading the ncbi file starting from ORIGIN going line by line and character by
  * character in each line. It will use the character DNASequence instance to accumulate
  * the DNA sequence
- * @author 
+ * @author amandadelu, pjcory, joshsanders
  *
  */
 public class DNAInput {
