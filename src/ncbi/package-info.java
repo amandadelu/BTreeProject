@@ -1,8 +1,2 @@
-/**
- * 
- */
-/**
- * @author nik
- *
- */
+
 package ncbi;

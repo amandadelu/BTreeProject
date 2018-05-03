@@ -2,11 +2,11 @@ package ncbi;
 
 import bterrors.DNABadCode;
 import bterrors.DNAWrongSequenceLength;
-/*
+/**
  * class that builds a long key letter by letter from a DNA
  * it accumulates the sequence and every new letter updates the sequence pushing
  * the oldest letter out
- * 
+ * @author amandadelu, pjcory, joshsanders
  */
 public class DNASequence {
 	/*
